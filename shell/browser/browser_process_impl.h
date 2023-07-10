@@ -97,7 +97,6 @@ class BrowserProcessImpl : public BrowserProcess {
       override;
   resource_coordinator::TabManager* GetTabManager() override;
   SerialPolicyAllowedPorts* serial_policy_allowed_ports() override;
-  HidPolicyAllowedDevices* hid_policy_allowed_devices() override;
   HidSystemTrayIcon* hid_system_tray_icon() override;
   void CreateDevToolsProtocolHandler() override {}
   void CreateDevToolsAutoOpener() override {}
@@ -110,9 +109,6 @@ class BrowserProcessImpl : public BrowserProcess {
   const std::string& GetApplicationLocale() override;
   printing::PrintJobManager* print_job_manager() override;
   StartupData* startup_data() override;
-  device::GeolocationManager* geolocation_manager() override;
-  void SetGeolocationManager(
-      std::unique_ptr<device::GeolocationManager> geolocation_manager) override;
 
  private:
   void CreateNetworkQualityObserver();
@@ -122,7 +118,6 @@ class BrowserProcessImpl : public BrowserProcess {
   std::unique_ptr<printing::PrintJobManager> print_job_manager_;
 #endif
   std::unique_ptr<PrefService> local_state_;
-  std::unique_ptr<device::GeolocationManager> geolocation_manager_;
   std::string locale_;
   std::string system_locale_;
   embedder_support::OriginTrialsSettingsStorage origin_trials_settings_storage_;

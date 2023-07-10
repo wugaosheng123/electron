@@ -7,7 +7,9 @@
 
 #import <AppKit/AppKit.h>
 
+#include "base/apple/owned_objc.h"
 #include "base/mac/scoped_nsobject.h"
+#include "base/memory/raw_ptr.h"
 #include "chrome/browser/devtools/devtools_contents_resizing_strategy.h"
 #include "ui/base/cocoa/base_view.h"
 
@@ -23,7 +25,7 @@ using electron::InspectableWebContentsViewMac;
 
 @interface ElectronInspectableWebContentsView : BaseView <NSWindowDelegate> {
  @private
-  electron::InspectableWebContentsViewMac* inspectableWebContentsView_;
+  raw_ptr<electron::InspectableWebContentsViewMac> inspectableWebContentsView_;
 
   base::scoped_nsobject<NSView> fake_view_;
   base::scoped_nsobject<NSWindow> devtools_window_;
@@ -46,7 +48,7 @@ using electron::InspectableWebContentsViewMac;
     (const DevToolsContentsResizingStrategy&)strategy;
 - (void)setTitle:(NSString*)title;
 
-- (void)redispatchContextMenuEvent:(NSEvent*)theEvent;
+- (void)redispatchContextMenuEvent:(base::apple::OwnedNSEvent)theEvent;
 
 @end
 

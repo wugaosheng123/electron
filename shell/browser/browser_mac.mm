@@ -32,6 +32,7 @@
 #include "shell/common/gin_helper/error_thrower.h"
 #include "shell/common/gin_helper/promise.h"
 #include "shell/common/platform_util.h"
+#include "ui/base/resource/resource_scale_factor.h"
 #include "ui/gfx/image/image.h"
 #include "url/gurl.h"
 
@@ -178,7 +179,11 @@ bool Browser::RemoveAsDefaultProtocolClient(const std::string& protocol,
 
   NSString* protocol_ns = [NSString stringWithUTF8String:protocol.c_str()];
   CFStringRef protocol_cf = base::mac::NSToCFCast(protocol_ns);
+// TODO(codebytere): Use -[NSWorkspace URLForApplicationToOpenURL:] instead
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
   CFArrayRef bundleList = LSCopyAllHandlersForURLScheme(protocol_cf);
+#pragma clang diagnostic pop
   if (!bundleList) {
     return false;
   }
@@ -228,9 +233,12 @@ bool Browser::IsDefaultProtocolClient(const std::string& protocol,
 
   NSString* protocol_ns = [NSString stringWithUTF8String:protocol.c_str()];
 
+// TODO(codebytere): Use -[NSWorkspace URLForApplicationToOpenURL:] instead
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
   base::ScopedCFTypeRef<CFStringRef> bundleId(
       LSCopyDefaultHandlerForURLScheme(base::mac::NSToCFCast(protocol_ns)));
-
+#pragma clang diagnostic pop
   if (!bundleId)
     return false;
 
@@ -501,14 +509,12 @@ void Browser::DockSetIcon(v8::Isolate* isolate, v8::Local<v8::Value> icon) {
     image = native_image->image();
   }
 
-  DockSetIconImage(image);
-}
-
-void Browser::DockSetIconImage(gfx::Image const& image) {
-  if (!is_ready_) {
-    dock_icon_ = image;
-    return;
-  }
+  // This is needed to avoid a hard CHECK when this fn is called
+  // before the browser process is ready, since supported scales
+  // are normally set by ui::ResourceBundle::InitSharedInstance
+  // during browser process startup.
+  if (!is_ready())
+    ui::SetSupportedResourceScaleFactors({ui::k100Percent});
 
   [[AtomApplication sharedApplication]
       setApplicationIconImage:image.AsNSImage()];

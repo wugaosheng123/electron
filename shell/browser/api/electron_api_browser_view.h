@@ -7,7 +7,6 @@
 
 #include <memory>
 #include <string>
-#include <vector>
 
 #include "base/memory/raw_ptr.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -71,6 +70,9 @@ class BrowserView : public gin::Wrappable<BrowserView>,
 
   // content::WebContentsObserver:
   void WebContentsDestroyed() override;
+
+  // ExtendedWebContentsObserver:
+  void OnCloseContents() override;
 
  private:
   void SetAutoResize(AutoResizeFlags flags);

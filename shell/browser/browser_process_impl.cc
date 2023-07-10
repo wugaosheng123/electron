@@ -293,10 +293,6 @@ SerialPolicyAllowedPorts* BrowserProcessImpl::serial_policy_allowed_ports() {
   return nullptr;
 }
 
-HidPolicyAllowedDevices* BrowserProcessImpl::hid_policy_allowed_devices() {
-  return nullptr;
-}
-
 HidSystemTrayIcon* BrowserProcessImpl::hid_system_tray_icon() {
   return nullptr;
 }
@@ -329,15 +325,6 @@ printing::PrintJobManager* BrowserProcessImpl::print_job_manager() {
 
 StartupData* BrowserProcessImpl::startup_data() {
   return nullptr;
-}
-
-device::GeolocationManager* BrowserProcessImpl::geolocation_manager() {
-  return geolocation_manager_.get();
-}
-
-void BrowserProcessImpl::SetGeolocationManager(
-    std::unique_ptr<device::GeolocationManager> geolocation_manager) {
-  geolocation_manager_ = std::move(geolocation_manager);
 }
 
 network::NetworkQualityTracker* BrowserProcessImpl::GetNetworkQualityTracker() {

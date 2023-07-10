@@ -239,9 +239,8 @@ Returns:
 
 * `details` Event<>
   * `url` string - The URL the frame is navigating to.
-  * `isSameDocument` boolean - Whether the navigation happened without changing
-    document. Examples of same document navigations are reference fragment
-    navigations, pushState/replaceState, and same page history navigation.
+  * `isSameDocument` boolean - This event does not fire for same document navigations using window.history api and reference fragment navigations.
+    This property is always set to `false` for this event.
   * `isMainFrame` boolean - True if the navigation is taking place in a main frame.
   * `frame` WebFrameMain - The frame to be navigated.
   * `initiator` WebFrameMain (optional) - The frame which initiated the
@@ -273,6 +272,8 @@ Returns:
 
 * `details` Event<>
   * `url` string - The URL the frame is navigating to.
+  * `isSameDocument` boolean - This event does not fire for same document navigations using window.history api and reference fragment navigations.
+    This property is always set to `false` for this event.
   * `isMainFrame` boolean - True if the navigation is taking place in a main frame.
   * `frame` WebFrameMain - The frame to be navigated.
   * `initiator` WebFrameMain (optional) - The frame which initiated the
@@ -1466,11 +1467,11 @@ For a call of `win.webContents.adjustSelection({ start: 1, end: 5 })`
 
 Before:
 
-<img width="487" alt="Image Before Text Selection Adjustment" src="https://user-images.githubusercontent.com/2036040/231761306-cd4e7b15-c2ed-46cf-8e80-10811f6de83e.png">
+<img width="487" alt="Image Before Text Selection Adjustment" src="../images/web-contents-text-selection-before.png"/>
 
 After:
 
-<img width="487" alt="Image After Text Selection Adjustment" src="https://user-images.githubusercontent.com/2036040/231761169-887eb8ef-06fb-46e4-9efa-898bcb0d6a2b.png">
+<img width="487" alt="Image After Text Selection Adjustment" src="../images/web-contents-text-selection-after.png"/>
 
 #### `contents.replace(text)`
 

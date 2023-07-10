@@ -63,6 +63,7 @@
 #include "ppapi/buildflags/buildflags.h"
 #include "ppapi/host/ppapi_host.h"
 #include "printing/buildflags/buildflags.h"
+#include "services/device/public/cpp/geolocation/geolocation_manager.h"
 #include "services/device/public/cpp/geolocation/location_provider.h"
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/is_potentially_trustworthy.h"
@@ -186,7 +187,7 @@
 #include "components/crash/core/app/crashpad.h"        // nogncheck
 #endif
 
-#if BUILDFLAG(ENABLE_PICTURE_IN_PICTURE) && BUILDFLAG(IS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "chrome/browser/ui/views/overlay/video_overlay_window_views.h"
 #include "shell/browser/browser.h"
 #include "ui/aura/window.h"
@@ -422,9 +423,6 @@ void ElectronBrowserClient::OverrideWebkitPrefs(
   prefs->default_minimum_page_scale_factor = 1.f;
   prefs->default_maximum_page_scale_factor = 1.f;
   prefs->navigate_on_drag_drop = false;
-#if !BUILDFLAG(ENABLE_PICTURE_IN_PICTURE)
-  prefs->picture_in_picture_enabled = false;
-#endif
 
   ui::NativeTheme* native_theme = ui::NativeTheme::GetInstanceForNativeUi();
   prefs->preferred_color_scheme =
@@ -674,7 +672,6 @@ bool ElectronBrowserClient::CanCreateWindow(
   return false;
 }
 
-#if BUILDFLAG(ENABLE_PICTURE_IN_PICTURE)
 std::unique_ptr<content::VideoOverlayWindow>
 ElectronBrowserClient::CreateWindowForVideoPictureInPicture(
     content::VideoPictureInPictureWindowController* controller) {
@@ -692,7 +689,6 @@ ElectronBrowserClient::CreateWindowForVideoPictureInPicture(
 #endif
   return overlay_window;
 }
-#endif
 
 void ElectronBrowserClient::GetAdditionalAllowedSchemesForFileSystem(
     std::vector<std::string>* additional_schemes) {
@@ -763,12 +759,17 @@ bool ElectronBrowserClient::ShouldUseProcessPerSite(
 #endif
 }
 
-bool ElectronBrowserClient::ArePersistentMediaDeviceIDsAllowed(
-    content::BrowserContext* browser_context,
-    const GURL& scope,
+void ElectronBrowserClient::GetMediaDeviceIDSalt(
+    content::RenderFrameHost* rfh,
     const net::SiteForCookies& site_for_cookies,
-    const absl::optional<url::Origin>& top_frame_origin) {
-  return true;
+    const blink::StorageKey& storage_key,
+    base::OnceCallback<void(bool, const std::string&)> callback) {
+  constexpr bool persistent_media_device_id_allowed = true;
+  std::string persistent_media_device_id_salt =
+      static_cast<ElectronBrowserContext*>(rfh->GetBrowserContext())
+          ->GetMediaDeviceIDSalt();
+  std::move(callback).Run(persistent_media_device_id_allowed,
+                          persistent_media_device_id_salt);
 }
 
 base::FilePath ElectronBrowserClient::GetLoggingFileName(
@@ -1306,7 +1307,8 @@ bool ElectronBrowserClient::WillCreateURLLoaderFactory(
         header_client,
     bool* bypass_redirect_checks,
     bool* disable_secure_dns,
-    network::mojom::URLLoaderFactoryOverridePtr* factory_override) {
+    network::mojom::URLLoaderFactoryOverridePtr* factory_override,
+    scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner) {
   v8::Isolate* isolate = JavascriptEnvironment::GetIsolate();
   v8::HandleScope scope(isolate);
   auto web_request = api::WebRequest::FromOrCreate(isolate, browser_context);
@@ -1321,7 +1323,8 @@ bool ElectronBrowserClient::WillCreateURLLoaderFactory(
     bool use_proxy_for_web_request =
         web_request_api->MaybeProxyURLLoaderFactory(
             browser_context, frame_host, render_process_id, type, navigation_id,
-            ukm_source_id, factory_receiver, header_client);
+            ukm_source_id, factory_receiver, header_client,
+            navigation_response_task_runner);
 
     if (bypass_redirect_checks)
       *bypass_redirect_checks = use_proxy_for_web_request;
@@ -1366,7 +1369,9 @@ bool ElectronBrowserClient::WillCreateURLLoaderFactory(
 std::vector<std::unique_ptr<content::URLLoaderRequestInterceptor>>
 ElectronBrowserClient::WillCreateURLLoaderRequestInterceptors(
     content::NavigationUIData* navigation_ui_data,
-    int frame_tree_node_id) {
+    int frame_tree_node_id,
+    int64_t navigation_id,
+    scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner) {
   std::vector<std::unique_ptr<content::URLLoaderRequestInterceptor>>
       interceptors;
 #if BUILDFLAG(ENABLE_PDF_VIEWER)
@@ -1689,7 +1694,7 @@ void ElectronBrowserClient::RegisterBrowserInterfaceBindersForServiceWorker(
 
 #if BUILDFLAG(IS_MAC)
 device::GeolocationManager* ElectronBrowserClient::GetGeolocationManager() {
-  return g_browser_process->geolocation_manager();
+  return device::GeolocationManager::GetInstance();
 }
 #endif
 

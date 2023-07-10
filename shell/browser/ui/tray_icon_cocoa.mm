@@ -7,6 +7,7 @@
 #include <string>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "base/message_loop/message_pump_mac.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/task/current_thread.h"
@@ -19,8 +20,8 @@
 #include "ui/native_theme/native_theme.h"
 
 @interface StatusItemView : NSView {
-  electron::TrayIconCocoa* trayIcon_;       // weak
-  ElectronMenuController* menuController_;  // weak
+  raw_ptr<electron::TrayIconCocoa> trayIcon_;  // weak
+  ElectronMenuController* menuController_;     // weak
   BOOL ignoreDoubleClickEvents_;
   base::scoped_nsobject<NSStatusItem> statusItem_;
   base::scoped_nsobject<NSTrackingArea> trackingArea_;
@@ -43,8 +44,11 @@
 
   if ((self = [super initWithFrame:CGRectZero])) {
     [self registerForDraggedTypes:@[
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
       NSFilenamesPboardType,
-      NSStringPboardType,
+#pragma clang diagnostic pop
+      NSPasteboardTypeString,
     ]];
 
     // Create the status item.
@@ -122,16 +126,13 @@
   // Change font type, if specified
   CGFloat existing_size = [[[statusItem_ button] font] pointSize];
   if ([font_type isEqualToString:@"monospaced"]) {
-    if (@available(macOS 10.15, *)) {
-      NSDictionary* attributes = @{
-        NSFontAttributeName :
-            [NSFont monospacedSystemFontOfSize:existing_size
-                                        weight:NSFontWeightRegular]
-      };
-      [attributed_title
-          addAttributes:attributes
-                  range:NSMakeRange(0, [attributed_title length])];
-    }
+    NSDictionary* attributes = @{
+      NSFontAttributeName :
+          [NSFont monospacedSystemFontOfSize:existing_size
+                                      weight:NSFontWeightRegular]
+    };
+    [attributed_title addAttributes:attributes
+                              range:NSMakeRange(0, [attributed_title length])];
   } else if ([font_type isEqualToString:@"monospacedDigit"]) {
     NSDictionary* attributes = @{
       NSFontAttributeName :
@@ -291,6 +292,10 @@
 - (BOOL)handleDrop:(id<NSDraggingInfo>)sender {
   NSPasteboard* pboard = [sender draggingPasteboard];
 
+// TODO(codebytere): update to currently supported NSPasteboardTypeFileURL or
+// kUTTypeFileURL.
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
   if ([[pboard types] containsObject:NSFilenamesPboardType]) {
     std::vector<std::string> dropFiles;
     NSArray* files = [pboard propertyListForType:NSFilenamesPboardType];
@@ -298,12 +303,12 @@
       dropFiles.push_back(base::SysNSStringToUTF8(file));
     trayIcon_->NotifyDropFiles(dropFiles);
     return YES;
-  } else if ([[pboard types] containsObject:NSStringPboardType]) {
-    NSString* dropText = [pboard stringForType:NSStringPboardType];
+  } else if ([[pboard types] containsObject:NSPasteboardTypeString]) {
+    NSString* dropText = [pboard stringForType:NSPasteboardTypeString];
     trayIcon_->NotifyDropText(base::SysNSStringToUTF8(dropText));
     return YES;
   }
-
+#pragma clang diagnostic pop
   return NO;
 }
 
@@ -363,7 +368,7 @@ void TrayIconCocoa::PopUpOnUI(ElectronMenuModel* menu_model) {
 }
 
 void TrayIconCocoa::PopUpContextMenu(const gfx::Point& pos,
-                                     ElectronMenuModel* menu_model) {
+                                     raw_ptr<ElectronMenuModel> menu_model) {
   content::GetUIThreadTaskRunner({})->PostTask(
       FROM_HERE,
       base::BindOnce(&TrayIconCocoa::PopUpOnUI, weak_factory_.GetWeakPtr(),
@@ -374,7 +379,7 @@ void TrayIconCocoa::CloseContextMenu() {
   [status_item_view_ closeContextMenu];
 }
 
-void TrayIconCocoa::SetContextMenu(ElectronMenuModel* menu_model) {
+void TrayIconCocoa::SetContextMenu(raw_ptr<ElectronMenuModel> menu_model) {
   if (menu_model) {
     // Create native menu.
     menu_.reset([[ElectronMenuController alloc] initWithModel:menu_model

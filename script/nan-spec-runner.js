@@ -1,6 +1,6 @@
-const cp = require('child_process');
-const fs = require('fs');
-const path = require('path');
+const cp = require('node:child_process');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const BASE = path.resolve(__dirname, '../..');
 const NAN_DIR = path.resolve(BASE, 'third_party', 'nan');
@@ -9,7 +9,7 @@ const NPX_CMD = process.platform === 'win32' ? 'npx.cmd' : 'npx';
 const utils = require('./lib/utils');
 const { YARN_VERSION } = require('./yarn');
 
-if (!process.mainModule) {
+if (!require.main) {
   throw new Error('Must call the nan spec runner directly');
 }
 

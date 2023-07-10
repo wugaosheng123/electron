@@ -8,11 +8,11 @@
 #include <memory>
 #include <set>
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
 #include "base/containers/contains.h"
+#include "base/containers/fixed_flat_map.h"
 #include "base/containers/id_map.h"
 #include "base/files/file_util.h"
 #include "base/json/json_reader.h"
@@ -23,6 +23,7 @@
 #include "base/threading/scoped_blocking_call.h"
 #include "base/values.h"
 #include "chrome/browser/browser_process.h"
+#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/views/eye_dropper/eye_dropper.h"
 #include "chrome/common/pref_names.h"
@@ -90,6 +91,8 @@
 #include "shell/browser/electron_navigation_throttle.h"
 #include "shell/browser/file_select_helper.h"
 #include "shell/browser/native_window.h"
+#include "shell/browser/osr/osr_render_widget_host_view.h"
+#include "shell/browser/osr/osr_web_contents_view.h"
 #include "shell/browser/session_preferences.h"
 #include "shell/browser/ui/drag_util.h"
 #include "shell/browser/ui/file_dialog.h"
@@ -139,11 +142,6 @@
 #include "ui/display/screen.h"
 #include "ui/events/base_event_utils.h"
 
-#if BUILDFLAG(ENABLE_OSR)
-#include "shell/browser/osr/osr_render_widget_host_view.h"
-#include "shell/browser/osr/osr_web_contents_view.h"
-#endif
-
 #if BUILDFLAG(IS_WIN)
 #include "shell/browser/native_window_views.h"
 #endif
@@ -184,10 +182,6 @@
 #endif
 #endif  // BUILDFLAG(ENABLE_PRINTING)
 
-#if BUILDFLAG(ENABLE_PICTURE_IN_PICTURE)
-#include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
-#endif
-
 #if BUILDFLAG(ENABLE_PDF_VIEWER)
 #include "components/pdf/browser/pdf_web_contents_helper.h"  // nogncheck
 #include "shell/browser/electron_pdf_web_contents_helper_client.h"
@@ -209,26 +203,15 @@ struct Converter<printing::mojom::MarginType> {
   static bool FromV8(v8::Isolate* isolate,
                      v8::Local<v8::Value> val,
                      printing::mojom::MarginType* out) {
-    std::string type;
-    if (ConvertFromV8(isolate, val, &type)) {
-      if (type == "default") {
-        *out = printing::mojom::MarginType::kDefaultMargins;
-        return true;
-      }
-      if (type == "none") {
-        *out = printing::mojom::MarginType::kNoMargins;
-        return true;
-      }
-      if (type == "printableArea") {
-        *out = printing::mojom::MarginType::kPrintableAreaMargins;
-        return true;
-      }
-      if (type == "custom") {
-        *out = printing::mojom::MarginType::kCustomMargins;
-        return true;
-      }
-    }
-    return false;
+    using Val = printing::mojom::MarginType;
+    static constexpr auto Lookup =
+        base::MakeFixedFlatMapSorted<base::StringPiece, Val>({
+            {"custom", Val::kCustomMargins},
+            {"default", Val::kDefaultMargins},
+            {"none", Val::kNoMargins},
+            {"printableArea", Val::kPrintableAreaMargins},
+        });
+    return FromV8WithLookup(isolate, val, Lookup, out);
   }
 };
 
@@ -237,22 +220,14 @@ struct Converter<printing::mojom::DuplexMode> {
   static bool FromV8(v8::Isolate* isolate,
                      v8::Local<v8::Value> val,
                      printing::mojom::DuplexMode* out) {
-    std::string mode;
-    if (ConvertFromV8(isolate, val, &mode)) {
-      if (mode == "simplex") {
-        *out = printing::mojom::DuplexMode::kSimplex;
-        return true;
-      }
-      if (mode == "longEdge") {
-        *out = printing::mojom::DuplexMode::kLongEdge;
-        return true;
-      }
-      if (mode == "shortEdge") {
-        *out = printing::mojom::DuplexMode::kShortEdge;
-        return true;
-      }
-    }
-    return false;
+    using Val = printing::mojom::DuplexMode;
+    static constexpr auto Lookup =
+        base::MakeFixedFlatMapSorted<base::StringPiece, Val>({
+            {"longEdge", Val::kLongEdge},
+            {"shortEdge", Val::kShortEdge},
+            {"simplex", Val::kSimplex},
+        });
+    return FromV8WithLookup(isolate, val, Lookup, out);
   }
 };
 
@@ -292,20 +267,14 @@ struct Converter<content::SavePageType> {
   static bool FromV8(v8::Isolate* isolate,
                      v8::Local<v8::Value> val,
                      content::SavePageType* out) {
-    std::string save_type;
-    if (!ConvertFromV8(isolate, val, &save_type))
-      return false;
-    save_type = base::ToLowerASCII(save_type);
-    if (save_type == "htmlonly") {
-      *out = content::SAVE_PAGE_TYPE_AS_ONLY_HTML;
-    } else if (save_type == "htmlcomplete") {
-      *out = content::SAVE_PAGE_TYPE_AS_COMPLETE_HTML;
-    } else if (save_type == "mhtml") {
-      *out = content::SAVE_PAGE_TYPE_AS_MHTML;
-    } else {
-      return false;
-    }
-    return true;
+    using Val = content::SavePageType;
+    static constexpr auto Lookup =
+        base::MakeFixedFlatMapSorted<base::StringPiece, Val>({
+            {"htmlcomplete", Val::SAVE_PAGE_TYPE_AS_COMPLETE_HTML},
+            {"htmlonly", Val::SAVE_PAGE_TYPE_AS_ONLY_HTML},
+            {"mhtml", Val::SAVE_PAGE_TYPE_AS_MHTML},
+        });
+    return FromV8WithLowerLookup(isolate, val, Lookup, out);
   }
 };
 
@@ -343,24 +312,15 @@ struct Converter<electron::api::WebContents::Type> {
   static bool FromV8(v8::Isolate* isolate,
                      v8::Local<v8::Value> val,
                      electron::api::WebContents::Type* out) {
-    using Type = electron::api::WebContents::Type;
-    std::string type;
-    if (!ConvertFromV8(isolate, val, &type))
-      return false;
-    if (type == "backgroundPage") {
-      *out = Type::kBackgroundPage;
-    } else if (type == "browserView") {
-      *out = Type::kBrowserView;
-    } else if (type == "webview") {
-      *out = Type::kWebView;
-#if BUILDFLAG(ENABLE_OSR)
-    } else if (type == "offscreen") {
-      *out = Type::kOffScreen;
-#endif
-    } else {
-      return false;
-    }
-    return true;
+    using Val = electron::api::WebContents::Type;
+    static constexpr auto Lookup =
+        base::MakeFixedFlatMapSorted<base::StringPiece, Val>({
+            {"backgroundPage", Val::kBackgroundPage},
+            {"browserView", Val::kBrowserView},
+            {"offscreen", Val::kOffScreen},
+            {"webview", Val::kWebView},
+        });
+    return FromV8WithLookup(isolate, val, Lookup, out);
   }
 };
 
@@ -382,8 +342,9 @@ namespace electron::api {
 
 namespace {
 
-std::string CursorTypeToString(const ui::Cursor& cursor) {
-  switch (cursor.type()) {
+constexpr base::StringPiece CursorTypeToString(
+    ui::mojom::CursorType cursor_type) {
+  switch (cursor_type) {
     case ui::mojom::CursorType::kPointer:
       return "pointer";
     case ui::mojom::CursorType::kCross:
@@ -786,12 +747,7 @@ WebContents::WebContents(v8::Isolate* isolate,
                          content::WebContents* web_contents)
     : content::WebContentsObserver(web_contents),
       type_(Type::kRemote),
-      id_(GetAllWebContents().Add(this)),
-      devtools_file_system_indexer_(
-          base::MakeRefCounted<DevToolsFileSystemIndexer>()),
-      exclusive_access_manager_(std::make_unique<ExclusiveAccessManager>(this)),
-      file_task_runner_(
-          base::ThreadPool::CreateSequencedTaskRunner({base::MayBlock()}))
+      id_(GetAllWebContents().Add(this))
 #if BUILDFLAG(ENABLE_PRINTING)
       ,
       print_task_runner_(CreatePrinterHandlerTaskRunner())
@@ -824,12 +780,7 @@ WebContents::WebContents(v8::Isolate* isolate,
                          Type type)
     : content::WebContentsObserver(web_contents.get()),
       type_(type),
-      id_(GetAllWebContents().Add(this)),
-      devtools_file_system_indexer_(
-          base::MakeRefCounted<DevToolsFileSystemIndexer>()),
-      exclusive_access_manager_(std::make_unique<ExclusiveAccessManager>(this)),
-      file_task_runner_(
-          base::ThreadPool::CreateSequencedTaskRunner({base::MayBlock()}))
+      id_(GetAllWebContents().Add(this))
 #if BUILDFLAG(ENABLE_PRINTING)
       ,
       print_task_runner_(CreatePrinterHandlerTaskRunner())
@@ -845,12 +796,7 @@ WebContents::WebContents(v8::Isolate* isolate,
 
 WebContents::WebContents(v8::Isolate* isolate,
                          const gin_helper::Dictionary& options)
-    : id_(GetAllWebContents().Add(this)),
-      devtools_file_system_indexer_(
-          base::MakeRefCounted<DevToolsFileSystemIndexer>()),
-      exclusive_access_manager_(std::make_unique<ExclusiveAccessManager>(this)),
-      file_task_runner_(
-          base::ThreadPool::CreateSequencedTaskRunner({base::MayBlock()}))
+    : id_(GetAllWebContents().Add(this))
 #if BUILDFLAG(ENABLE_PRINTING)
       ,
       print_task_runner_(CreatePrinterHandlerTaskRunner())
@@ -862,11 +808,9 @@ WebContents::WebContents(v8::Isolate* isolate,
   // Get type
   options.Get("type", &type_);
 
-#if BUILDFLAG(ENABLE_OSR)
   bool b = false;
   if (options.Get(options::kOffscreen, &b) && b)
     type_ = Type::kOffScreen;
-#endif
 
   // Init embedder earlier
   options.Get("embedder", &embedder_);
@@ -903,7 +847,6 @@ WebContents::WebContents(v8::Isolate* isolate,
         std::make_unique<WebViewGuestDelegate>(embedder_->web_contents(), this);
     params.guest_delegate = guest_delegate_.get();
 
-#if BUILDFLAG(ENABLE_OSR)
     if (embedder_ && embedder_->IsOffScreen()) {
       auto* view = new OffScreenWebContentsView(
           false,
@@ -914,9 +857,7 @@ WebContents::WebContents(v8::Isolate* isolate,
       web_contents = content::WebContents::Create(params);
       view->SetWebContents(web_contents.get());
     } else {
-#endif
       web_contents = content::WebContents::Create(params);
-#if BUILDFLAG(ENABLE_OSR)
     }
   } else if (IsOffScreen()) {
     // webPreferences does not have a transparent option, so if the window needs
@@ -935,7 +876,6 @@ WebContents::WebContents(v8::Isolate* isolate,
 
     web_contents = content::WebContents::Create(params);
     view->SetWebContents(web_contents.get());
-#endif
   } else {
     content::WebContents::CreateParams params(session->browser_context());
     params.initially_hidden = !initially_shown;
@@ -1357,7 +1297,9 @@ void WebContents::CloseContents(content::WebContents* source) {
   for (ExtendedWebContentsObserver& observer : observers_)
     observer.OnCloseContents();
 
-  Destroy();
+  // This is handled by the embedder frame.
+  if (!IsGuest())
+    Destroy();
 }
 
 void WebContents::ActivateContents(content::WebContents* source) {
@@ -1412,7 +1354,7 @@ bool WebContents::PlatformHandleKeyboardEvent(
 content::KeyboardEventProcessingResult WebContents::PreHandleKeyboardEvent(
     content::WebContents* source,
     const content::NativeWebKeyboardEvent& event) {
-  if (exclusive_access_manager_->HandleUserKeyEvent(event))
+  if (exclusive_access_manager_.HandleUserKeyEvent(event))
     return content::KeyboardEventProcessingResult::HANDLED;
 
   if (event.GetType() == blink::WebInputEvent::Type::kRawKeyDown ||
@@ -1500,7 +1442,7 @@ void WebContents::OnEnterFullscreenModeForTab(
 
   owner_window()->set_fullscreen_transition_type(
       NativeWindow::FullScreenTransitionType::kHTML);
-  exclusive_access_manager_->fullscreen_controller()->EnterFullscreenModeForTab(
+  exclusive_access_manager_.fullscreen_controller()->EnterFullscreenModeForTab(
       requesting_frame, options.display_id);
 
   SetHtmlApiFullscreen(true);
@@ -1518,7 +1460,7 @@ void WebContents::ExitFullscreenModeForTab(content::WebContents* source) {
 
   // This needs to be called before we exit fullscreen on the native window,
   // or the controller will incorrectly think we weren't fullscreen and bail.
-  exclusive_access_manager_->fullscreen_controller()->ExitFullscreenModeForTab(
+  exclusive_access_manager_.fullscreen_controller()->ExitFullscreenModeForTab(
       source);
 
   SetHtmlApiFullscreen(false);
@@ -1577,7 +1519,7 @@ void WebContents::RequestExclusivePointerAccess(
     bool last_unlocked_by_target,
     bool allowed) {
   if (allowed) {
-    exclusive_access_manager_->mouse_lock_controller()->RequestToLockMouse(
+    exclusive_access_manager_.mouse_lock_controller()->RequestToLockMouse(
         web_contents, user_gesture, last_unlocked_by_target);
   } else {
     web_contents->GotResponseToLockMouseRequest(
@@ -1597,18 +1539,18 @@ void WebContents::RequestToLockMouse(content::WebContents* web_contents,
 }
 
 void WebContents::LostMouseLock() {
-  exclusive_access_manager_->mouse_lock_controller()->LostMouseLock();
+  exclusive_access_manager_.mouse_lock_controller()->LostMouseLock();
 }
 
 void WebContents::RequestKeyboardLock(content::WebContents* web_contents,
                                       bool esc_key_locked) {
-  exclusive_access_manager_->keyboard_lock_controller()->RequestKeyboardLock(
+  exclusive_access_manager_.keyboard_lock_controller()->RequestKeyboardLock(
       web_contents, esc_key_locked);
 }
 
 void WebContents::CancelKeyboardLockRequest(
     content::WebContents* web_contents) {
-  exclusive_access_manager_->keyboard_lock_controller()
+  exclusive_access_manager_.keyboard_lock_controller()
       ->CancelKeyboardLockRequest(web_contents);
 }
 
@@ -2321,11 +2263,9 @@ void WebContents::SetOwnerWindow(content::WebContents* web_contents,
     owner_window_ = nullptr;
     web_contents->RemoveUserData(NativeWindowRelay::UserDataKey());
   }
-#if BUILDFLAG(ENABLE_OSR)
   auto* osr_wcv = GetOffScreenWebContentsView();
   if (osr_wcv)
     osr_wcv->SetNativeWindow(owner_window);
-#endif
 }
 
 content::WebContents* WebContents::GetWebContents() const {
@@ -3347,9 +3287,7 @@ void WebContents::SendInputEvent(v8::Isolate* isolate,
     blink::WebMouseEvent mouse_event;
     if (gin::ConvertFromV8(isolate, input_event, &mouse_event)) {
       if (IsOffScreen()) {
-#if BUILDFLAG(ENABLE_OSR)
         GetOffScreenRenderWidgetHostView()->SendMouseEvent(mouse_event);
-#endif
       } else {
         rwh->ForwardMouseEvent(mouse_event);
       }
@@ -3370,10 +3308,8 @@ void WebContents::SendInputEvent(v8::Isolate* isolate,
     blink::WebMouseWheelEvent mouse_wheel_event;
     if (gin::ConvertFromV8(isolate, input_event, &mouse_wheel_event)) {
       if (IsOffScreen()) {
-#if BUILDFLAG(ENABLE_OSR)
         GetOffScreenRenderWidgetHostView()->SendMouseWheelEvent(
             mouse_wheel_event);
-#endif
       } else {
         // Chromium expects phase info in wheel events (and applies a
         // DCHECK to verify it). See: https://crbug.com/756524.
@@ -3518,14 +3454,14 @@ bool WebContents::IsBeingCaptured() {
 
 void WebContents::OnCursorChanged(const ui::Cursor& cursor) {
   if (cursor.type() == ui::mojom::CursorType::kCustom) {
-    Emit("cursor-changed", CursorTypeToString(cursor),
+    Emit("cursor-changed", CursorTypeToString(cursor.type()),
          gfx::Image::CreateFrom1xBitmap(cursor.custom_bitmap()),
          cursor.image_scale_factor(),
          gfx::Size(cursor.custom_bitmap().width(),
                    cursor.custom_bitmap().height()),
          cursor.custom_hotspot());
   } else {
-    Emit("cursor-changed", CursorTypeToString(cursor));
+    Emit("cursor-changed", CursorTypeToString(cursor.type()));
   }
 }
 
@@ -3541,14 +3477,9 @@ void WebContents::AttachToIframe(content::WebContents* embedder_web_contents,
 }
 
 bool WebContents::IsOffScreen() const {
-#if BUILDFLAG(ENABLE_OSR)
   return type_ == Type::kOffScreen;
-#else
-  return false;
-#endif
 }
 
-#if BUILDFLAG(ENABLE_OSR)
 void WebContents::OnPaint(const gfx::Rect& dirty_rect, const SkBitmap& bitmap) {
   Emit("paint", dirty_rect, gfx::Image::CreateFrom1xBitmap(bitmap));
 }
@@ -3580,15 +3511,12 @@ int WebContents::GetFrameRate() const {
   auto* osr_wcv = GetOffScreenWebContentsView();
   return osr_wcv ? osr_wcv->GetFrameRate() : 0;
 }
-#endif
 
 void WebContents::Invalidate() {
   if (IsOffScreen()) {
-#if BUILDFLAG(ENABLE_OSR)
     auto* osr_rwhv = GetOffScreenRenderWidgetHostView();
     if (osr_rwhv)
       osr_rwhv->Invalidate();
-#endif
   } else {
     auto* const window = owner_window();
     if (window)
@@ -3878,8 +3806,10 @@ bool WebContents::IsFullscreenForTabOrPending(
 
 content::FullscreenState WebContents::GetFullscreenState(
     const content::WebContents* source) const {
-  return exclusive_access_manager_->fullscreen_controller()->GetFullscreenState(
-      source);
+  // `const_cast` here because EAM does not have const getters
+  return const_cast<ExclusiveAccessManager*>(&exclusive_access_manager_)
+      ->fullscreen_controller()
+      ->GetFullscreenState(source);
 }
 
 bool WebContents::TakeFocus(content::WebContents* source, bool reverse) {
@@ -3896,18 +3826,12 @@ bool WebContents::TakeFocus(content::WebContents* source, bool reverse) {
 
 content::PictureInPictureResult WebContents::EnterPictureInPicture(
     content::WebContents* web_contents) {
-#if BUILDFLAG(ENABLE_PICTURE_IN_PICTURE)
   return PictureInPictureWindowManager::GetInstance()
       ->EnterVideoPictureInPicture(web_contents);
-#else
-  return content::PictureInPictureResult::kNotSupported;
-#endif
 }
 
 void WebContents::ExitPictureInPicture() {
-#if BUILDFLAG(ENABLE_PICTURE_IN_PICTURE)
   PictureInPictureWindowManager::GetInstance()->ExitPictureInPicture();
-#endif
 }
 
 void WebContents::DevToolsSaveToFile(const std::string& url,
@@ -4322,13 +4246,11 @@ void WebContents::FillObjectTemplate(v8::Isolate* isolate,
       .SetMethod("attachToIframe", &WebContents::AttachToIframe)
       .SetMethod("detachFromOuterFrame", &WebContents::DetachFromOuterFrame)
       .SetMethod("isOffscreen", &WebContents::IsOffScreen)
-#if BUILDFLAG(ENABLE_OSR)
       .SetMethod("startPainting", &WebContents::StartPainting)
       .SetMethod("stopPainting", &WebContents::StopPainting)
       .SetMethod("isPainting", &WebContents::IsPainting)
       .SetMethod("setFrameRate", &WebContents::SetFrameRate)
       .SetMethod("getFrameRate", &WebContents::GetFrameRate)
-#endif
       .SetMethod("invalidate", &WebContents::Invalidate)
       .SetMethod("setZoomLevel", &WebContents::SetZoomLevel)
       .SetMethod("getZoomLevel", &WebContents::GetZoomLevel)

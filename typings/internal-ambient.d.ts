@@ -5,13 +5,10 @@ declare const ENABLE_VIEWS_API: boolean;
 declare namespace NodeJS {
   interface FeaturesBinding {
     isBuiltinSpellCheckerEnabled(): boolean;
-    isOffscreenRenderingEnabled(): boolean;
     isPDFViewerEnabled(): boolean;
-    isRunAsNodeEnabled(): boolean;
     isFakeLocationProviderEnabled(): boolean;
     isViewApiEnabled(): boolean;
     isPrintingEnabled(): boolean;
-    isPictureInPictureEnabled(): boolean;
     isExtensionsEnabled(): boolean;
     isComponentBuild(): boolean;
   }

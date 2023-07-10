@@ -1,10 +1,10 @@
 import { expect } from 'chai';
-import * as path from 'path';
+import * as path from 'node:path';
 import { BrowserView, BrowserWindow, screen, webContents } from 'electron/main';
 import { closeWindow } from './lib/window-helpers';
 import { defer, ifit, startRemoteControlApp } from './lib/spec-helpers';
 import { areColorsSimilar, captureScreen, getPixelColor } from './lib/screen-helpers';
-import { once } from 'events';
+import { once } from 'node:events';
 
 describe('BrowserView module', () => {
   const fixtures = path.resolve(__dirname, 'fixtures');
@@ -146,14 +146,7 @@ describe('BrowserView module', () => {
   });
 
   describe('BrowserView.getBounds()', () => {
-    it('returns correct bounds on a framed window', () => {
-      view = new BrowserView();
-      const bounds = { x: 10, y: 20, width: 30, height: 40 };
-      view.setBounds(bounds);
-      expect(view.getBounds()).to.deep.equal(bounds);
-    });
-
-    it('returns correct bounds on a frameless window', () => {
+    it('returns the current bounds', () => {
       view = new BrowserView();
       const bounds = { x: 10, y: 20, width: 30, height: 40 };
       view.setBounds(bounds);
@@ -256,6 +249,20 @@ describe('BrowserView module', () => {
         w.removeBrowserView(view);
         w.removeBrowserView(view);
       }).to.not.throw();
+    });
+
+    it('can be called on a BrowserView with a destroyed webContents', (done) => {
+      view = new BrowserView();
+      w.addBrowserView(view);
+
+      view.webContents.on('destroyed', () => {
+        w.removeBrowserView(view);
+        done();
+      });
+
+      view.webContents.loadURL('data:text/html,hello there').then(() => {
+        view.webContents.close();
+      });
     });
   });
 

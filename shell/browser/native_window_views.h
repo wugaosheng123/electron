@@ -10,7 +10,6 @@
 #include <memory>
 #include <set>
 #include <string>
-#include <vector>
 
 #include "base/memory/raw_ptr.h"
 #include "shell/browser/ui/views/root_view.h"
@@ -79,6 +78,9 @@ class NativeWindowViews : public NativeWindow,
   SkColor GetBackgroundColor() override;
   void SetContentSizeConstraints(
       const extensions::SizeConstraints& size_constraints) override;
+#if BUILDFLAG(IS_WIN)
+  extensions::SizeConstraints GetContentSizeConstraints() const override;
+#endif
   void SetResizable(bool resizable) override;
   bool MoveAbove(const std::string& sourceId) override;
   void MoveTop() override;

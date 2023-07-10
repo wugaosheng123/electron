@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 #include "electron/buildflags/buildflags.h"
-#include "electron/fuses.h"
 #include "printing/buildflags/buildflags.h"
 #include "shell/common/gin_helper/dictionary.h"
 #include "shell/common/node_includes.h"
@@ -14,16 +13,8 @@ bool IsBuiltinSpellCheckerEnabled() {
   return BUILDFLAG(ENABLE_BUILTIN_SPELLCHECKER);
 }
 
-bool IsOffscreenRenderingEnabled() {
-  return BUILDFLAG(ENABLE_OSR);
-}
-
 bool IsPDFViewerEnabled() {
   return BUILDFLAG(ENABLE_PDF_VIEWER);
-}
-
-bool IsRunAsNodeEnabled() {
-  return electron::fuses::IsRunAsNodeEnabled() && BUILDFLAG(ENABLE_RUN_AS_NODE);
 }
 
 bool IsFakeLocationProviderEnabled() {
@@ -42,10 +33,6 @@ bool IsExtensionsEnabled() {
   return BUILDFLAG(ENABLE_ELECTRON_EXTENSIONS);
 }
 
-bool IsPictureInPictureEnabled() {
-  return BUILDFLAG(ENABLE_PICTURE_IN_PICTURE);
-}
-
 bool IsComponentBuild() {
 #if defined(COMPONENT_BUILD)
   return true;
@@ -60,14 +47,11 @@ void Initialize(v8::Local<v8::Object> exports,
                 void* priv) {
   gin_helper::Dictionary dict(context->GetIsolate(), exports);
   dict.SetMethod("isBuiltinSpellCheckerEnabled", &IsBuiltinSpellCheckerEnabled);
-  dict.SetMethod("isOffscreenRenderingEnabled", &IsOffscreenRenderingEnabled);
   dict.SetMethod("isPDFViewerEnabled", &IsPDFViewerEnabled);
-  dict.SetMethod("isRunAsNodeEnabled", &IsRunAsNodeEnabled);
   dict.SetMethod("isFakeLocationProviderEnabled",
                  &IsFakeLocationProviderEnabled);
   dict.SetMethod("isViewApiEnabled", &IsViewApiEnabled);
   dict.SetMethod("isPrintingEnabled", &IsPrintingEnabled);
-  dict.SetMethod("isPictureInPictureEnabled", &IsPictureInPictureEnabled);
   dict.SetMethod("isComponentBuild", &IsComponentBuild);
   dict.SetMethod("isExtensionsEnabled", &IsExtensionsEnabled);
 }

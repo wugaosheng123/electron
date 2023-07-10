@@ -4,8 +4,6 @@
 
 #include "shell/browser/api/electron_api_browser_view.h"
 
-#include <vector>
-
 #include "content/browser/renderer_host/render_widget_host_view_base.h"  // nogncheck
 #include "content/public/browser/render_widget_host_view.h"
 #include "shell/browser/api/electron_api_base_window.h"
@@ -131,6 +129,10 @@ void BrowserView::WebContentsDestroyed() {
   api_web_contents_ = nullptr;
   web_contents_.Reset();
   Unpin();
+}
+
+void BrowserView::OnCloseContents() {
+  api_web_contents_ = nullptr;
 }
 
 // static
